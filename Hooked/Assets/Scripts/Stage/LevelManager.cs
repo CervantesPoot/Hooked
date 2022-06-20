@@ -27,6 +27,7 @@ public class LevelManager : MonoBehaviour
         player.spawned = false;
         yield return new WaitForSeconds(1f);
         player.level = this;
+        player.SpawnStart();
         startText.text = "3";
         yield return new WaitForSeconds(1f);
         startText.text = "2";
@@ -50,7 +51,7 @@ public class LevelManager : MonoBehaviour
         yield return new WaitForSeconds(1f);
         respawnText.text = "";
         player.ResumeCharacter();
-        
+
         yield break;
     }
 

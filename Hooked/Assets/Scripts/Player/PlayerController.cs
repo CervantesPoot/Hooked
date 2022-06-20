@@ -1,14 +1,20 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using EzySlice;
+using System.Linq;
+using Random = System.Random;
 
 public class PlayerController : MonoBehaviour
 {
     public bool spawned = true;
     public bool wallHit = false;
     public bool grappling = false;
+
+    public bool endCredits = false;
 
     [SerializeField]
     private float speed = 1f;
@@ -43,6 +49,14 @@ public class PlayerController : MonoBehaviour
 
     private Animator animatorController;
 
+    // private Transform endPoint;
+    // private GameObject dummy;
+
+    private EndPoint endTargetReference;
+
+    [SerializeField]
+    private Material cutMaterial;
+
     private void Awake()
     {
         physics = GetComponent<Rigidbody>();
@@ -50,10 +64,127 @@ public class PlayerController : MonoBehaviour
         animatorController = GetComponentInChildren<Animator>();
     }
 
+    private SlicedHull Slice(GameObject dummyTarget, Vector3 planeWorldPosition, Vector3 planeWorldDirection)
+    {
+        return dummyTarget.Slice(planeWorldPosition, planeWorldDirection);
+    }
+
+    private IEnumerator FinalCut()
+    {
+        Random random = new Random();
+        int[] array = Enumerable.Range(0, endTargetReference.cuts.Length).OrderBy(c => random.Next()).ToArray();
+        List<GameObject> targetParts = new List<GameObject>();
+        List<GameObject> targetPartsTemp = new List<GameObject>();
+        targetParts.Add(endTargetReference.dummyTarget);
+        foreach (int value in array)
+        {
+            PlaneSlice sliceCut = endTargetReference.cuts[value].GetComponent<PlaneSlice>();
+
+            foreach (GameObject part in targetParts)
+            {
+                SlicedHull hull = sliceCut.SliceObject(part);
+
+                if (hull != null)
+                {
+                    GameObject childLow = hull.CreateLowerHull(part, cutMaterial);
+                    childLow.transform.parent = part.transform.parent;
+                    childLow.transform.localPosition = part.transform.localPosition;
+                    childLow.transform.localRotation = part.transform.localRotation;
+                    childLow.transform.localScale = part.transform.localScale;
+
+                    GameObject childUpper = hull.CreateUpperHull(part, cutMaterial);
+                    childUpper.transform.parent = part.transform.parent;
+                    childUpper.transform.localPosition = part.transform.localPosition;
+                    childUpper.transform.localRotation = part.transform.localRotation;
+                    childUpper.transform.localScale = part.transform.localScale;
+
+                    targetPartsTemp.Add(childLow);
+                    targetPartsTemp.Add(childUpper);
+                    // childLow.AddComponent<CapsuleCollider>();
+                    // childUpper.AddComponent<CapsuleCollider>();
+                    // childLow.AddComponent<Rigidbody>();
+                    // childUpper.AddComponent<Rigidbody>();
+
+
+                    Destroy(part);
+                    // break;
+                }
+                else
+                {
+                    targetPartsTemp.Add(part);
+                }
+            }
+            targetParts.Clear();
+            targetParts = targetPartsTemp.ToList();
+            targetPartsTemp.Clear();
+
+            // SlicedHull hull = sliceCut.SliceObject(endTargetReference.dummyTarget);
+
+            // if (hull != null)
+            // {
+            //     GameObject childLow = hull.CreateLowerHull(endTargetReference.dummyTarget, cutMaterial);
+            //     childLow.transform.parent = endTargetReference.dummyTarget.transform.parent;
+            //     childLow.transform.localPosition = endTargetReference.dummyTarget.transform.localPosition;
+            //     childLow.transform.localRotation = endTargetReference.dummyTarget.transform.localRotation;
+            //     childLow.transform.localScale = endTargetReference.dummyTarget.transform.localScale;
+
+            //     GameObject childUpper = hull.CreateUpperHull(endTargetReference.dummyTarget, cutMaterial);
+            //     childUpper.transform.parent = endTargetReference.dummyTarget.transform.parent;
+            //     childUpper.transform.localPosition = endTargetReference.dummyTarget.transform.localPosition;
+            //     childUpper.transform.localRotation = endTargetReference.dummyTarget.transform.localRotation;
+            //     childUpper.transform.localScale = endTargetReference.dummyTarget.transform.localScale;
+
+            //     childLow.AddComponent<CapsuleCollider>();
+            //     childUpper.AddComponent<CapsuleCollider>();
+            //     childLow.AddComponent<Rigidbody>();
+            //     childUpper.AddComponent<Rigidbody>();
+
+
+            //     endTargetReference.dummyTarget.SetActive(false);
+            //     break;
+            // }
+
+
+            // SlicedHull test = Slice(endTargetReference.dummyTarget, start, end);
+            // if (test != null)
+            // {
+            //     test.CreateLowerHull(endTargetReference.dummyTarget);
+            //     test.CreateUpperHull(endTargetReference.dummyTarget);
+            // }
+        }
+
+        foreach (GameObject part in targetParts)
+        {
+            part.AddComponent<BoxCollider>();
+            part.GetComponent<BoxCollider>().size /= 1.5f;
+            part.AddComponent<Rigidbody>();
+        }
+
+        yield break;
+    }
+
     #region Movement
 
     private void Update()
     {
+        if (endCredits == true)
+        {
+            if (time < 1)
+            {
+                /// move to point
+                time += Time.deltaTime * horizontalSpeed;
+
+                this.transform.position = Vector3.Lerp(this.transform.position, endTargetReference.endPosition.position, time);
+            }
+            else
+            {
+                endCredits = false;
+                animatorController.Play("Withdraw");
+                StartCoroutine(FinalCut());
+                this.transform.LookAt(endTargetReference.dummyTarget.transform);
+            }
+            return;
+        }
         if (wallHit == false)
         {
             if (spawned == true)
@@ -268,7 +399,7 @@ public class PlayerController : MonoBehaviour
         grappling = false;
         actualHook = null;
         SetCharacter();
-        animatorController.Play("Stand");
+        animatorController.Play("StandUp");
     }
 
     #region RespawnLogic
@@ -291,6 +422,11 @@ public class PlayerController : MonoBehaviour
         line = lineCheckPoint;
         int rotationChange = (rotation - rotationCheckPoint) * -1;
         RotationChange(rotationChange);
+    }
+
+    public void SpawnStart()
+    {
+        animatorController.Play("StandUp");
     }
 
     #endregion RespawnLogic
@@ -375,6 +511,11 @@ public class PlayerController : MonoBehaviour
         {
             spawned = false;
             physics.velocity = Vector3.zero;
+            endCredits = true;
+            time = 0f;
+            endTargetReference = other.GetComponent<EndPoint>();
+            // endPoint = other.GetComponent<EndPoint>().endPosition;
+            // dummy = other.GetComponent<EndPoint>().dummyTarget;
         }
     }
 
